@@ -164,6 +164,8 @@ class Batcher(HeartbeatStoppableEventLoopObject):
                     trajectory_slice = slice(trajectory_slice, trajectory_slice + 1)  # slice of len 1
                 # log.debug(f"{self.policy_id} received trajectory slice {trajectory_slice}")
                 self.slices_for_training[device].merge_slices(trajectory_slice)
+                self.traj_tensors['cpu']['env_id'][trajectory_dict['traj_buffer_idx']] = trajectory_dict['unique_env_id']
+                self.traj_tensors['cpu']['start_step'][trajectory_dict['traj_buffer_idx']] = self.traj_tensors['cpu']['obs']['step_count'][trajectory_dict['traj_buffer_idx']][-1]
 
             self._maybe_enqueue_new_training_batches()
 

@@ -817,3 +817,19 @@ def add_pbt_args(p: ArgumentParser):
         type=float,
         help="When PBT mutates a float hyperparam, it samples the change magnitude randomly from the uniform distribution [pbt_perturb_min, pbt_perturb_max]",
     )
+
+
+def add_exploration_args(p: ArgumentParser):
+    """Weights and Biases experiment monitoring."""
+    p.add_argument("--intrinsic_reward_episodic", default="e3b", type=str, help="Intrinsic reward")
+    p.add_argument("--intrinsic_reward_global", default="none", type=str, help="Intrinsic reward")
+    p.add_argument("--intrinsic_reward_episodic_exp", default=1.0, type=float, help="Intrinsic reward")
+    p.add_argument("--intrinsic_reward_global_exp", default=0.5, type=float, help="Intrinsic reward")
+    p.add_argument("--inverse_dynamics_nhidden", default=128, type=int, help="Number of hidden units for IDM")
+    p.add_argument("--e3b_ridge", default=0.1, type=float, help="Ridge regularizer for E3B")
+    p.add_argument("--cov_update_freq", default=20000, type=int, help="How often to update cov prior")
+    p.add_argument("--start_cov_init", default=-1, type=int, help="How often to update cov prior")
+    p.add_argument("--num_covs_for_init", default=200, type=int, help="How many covs to use for computing prior")
+    p.add_argument("--cov_init_scale", default=0.1, type=float, help="Scaling for cov prior")
+    p.add_argument("--normalize_intrinsic_rewards", default=False, type=str2bool, help="normalize intrinsic rewards by running std")
+    p.add_argument("--intrinsic_reward_coeff", default=0.000003, type=float, help="intrinsic_reward coefficient")
