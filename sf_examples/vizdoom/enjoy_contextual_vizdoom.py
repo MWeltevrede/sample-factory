@@ -42,8 +42,12 @@ def main():
     # second parsing pass yields the final configuration
     cfg = parse_full_cfg(parser)
 
-    register_custom_doom_env(name='doom_battle_contexts', num_contexts=cfg.num_contexts, max_pure_expl_steps=cfg.max_pure_expl_steps)
-    register_custom_doom_env(name='doom_battle_contexts_test', num_contexts=-1)
+    register_custom_doom_env(base_name=cfg.env, name=cfg.env, num_contexts=cfg.num_contexts, max_pure_expl_steps=cfg.max_pure_expl_steps)
+    register_custom_doom_env(base_name=cfg.env, name=cfg.env + '_test', num_contexts=-1)
+
+    # ensure there is no env decorrelation since that is basically similar to what Explore-Go is trying to do
+    cfg.decorrelate_experience_max_seconds = 0
+    cfg.decorrelate_envs_on_one_worker = False
 
     status = enjoy(cfg)
     return status
