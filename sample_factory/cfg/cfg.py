@@ -485,6 +485,12 @@ def add_rl_args(p: ArgumentParser):
         type=int,
         help='Start saving "best" policies after this many env steps to filter lucky episodes that succeed and dominate the statistics early on',
     )
+    p.add_argument(
+        "--max_pure_expl_steps",
+        default = 0,
+        type=int,
+        help="Maximum number of pure exploration steps to take in ExploreGo. A value of 0 means no ExploreGo"
+    )
 
     # debugging options
     p.add_argument("--benchmark", default=False, type=str2bool, help="Benchmark mode")

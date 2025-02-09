@@ -89,7 +89,7 @@ def alloc_trajectory_tensors(env_info: EnvInfo, num_traj, rollout, rnn_size, dev
     # we need to allocate an extra rollout step here to calculate the value estimates for the last step
     for space_name, space in obs_space.spaces.items():
         tensors["obs"][space_name] = init_tensor([num_traj, rollout + 1], space.dtype, space.shape, device, share)
-    tensors["obs"]['step_count'] = init_tensor([num_traj, rollout + 1], torch.int64, [], device, share)
+    tensors["obs"]['step_count'] = init_tensor([num_traj, rollout + 1], torch.int64, [2], device, share)
     tensors["rnn_states"] = init_tensor([num_traj, rollout + 1], torch.float32, [rnn_size], device, share)
 
     num_actions, num_action_distribution_parameters = action_info(env_info)
