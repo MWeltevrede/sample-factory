@@ -89,6 +89,7 @@ def alloc_trajectory_tensors(env_info: EnvInfo, num_traj, rollout, rnn_size, dev
     # we need to allocate an extra rollout step here to calculate the value estimates for the last step
     for space_name, space in obs_space.spaces.items():
         tensors["obs"][space_name] = init_tensor([num_traj, rollout + 1], space.dtype, space.shape, device, share)
+    tensors["obs"]['step_count'] = init_tensor([num_traj, rollout + 1], torch.int64, [2], device, share)
     tensors["rnn_states"] = init_tensor([num_traj, rollout + 1], torch.float32, [rnn_size], device, share)
 
     num_actions, num_action_distribution_parameters = action_info(env_info)
@@ -113,6 +114,10 @@ def alloc_trajectory_tensors(env_info: EnvInfo, num_traj, rollout, rnn_size, dev
     tensors["policy_id"].fill_(-1)  # -1 is an invalid policy index, experience from policy "-1" is always ignored
     tensors["valids"] = init_tensor([num_traj, rollout + 1], torch.bool, [], device, share)
     tensors["valids"].fill_(False)  # no valid experience by default
+    tensors["env_id"] = init_tensor([num_traj], torch.int, [], device, share)
+    tensors["env_id"].fill_(-1)  # -1 is an invalid env index, this should be overwritten
+    tensors["start_step"] = init_tensor([num_traj], torch.long, [], device, share)
+    tensors["start_step"].fill_(-1)  # -1 is an invalid env index, this should be overwritten
 
     return tensors
 

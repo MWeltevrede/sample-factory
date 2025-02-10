@@ -32,9 +32,10 @@ from sample_factory.utils.typing import Config, PolicyID
 from sample_factory.train import make_runner
 from sf_examples.vizdoom.doom.action_space import doom_action_space_extended
 from sf_examples.vizdoom.doom.doom_params import add_doom_env_args, doom_override_defaults
-from sf_examples.vizdoom.doom.doom_utils import DoomSpec, make_doom_env_from_spec
+from sf_examples.vizdoom.doom.doom_utils import DoomSpec, make_doom_env_from_spec, doom_env_by_name
 from sf_examples.vizdoom.train_vizdoom import register_vizdoom_components
 from sf_examples.vizdoom.doom.wrappers.contextual import ContextualWrapper
+from sf_examples.vizdoom.doom.wrappers.explore_go import ExploreGoWrapper
 from sample_factory.utils.utils import debug_log_every_n, experiment_dir, log
 from sample_factory.algo.learning.learner import Learner
 from sample_factory.algo.sampling.batched_sampling import preprocess_actions
@@ -256,14 +257,14 @@ def register_msg_handlers(cfg: Config, runner: Runner):
     # extra functions to evaluate on the full set of seeds
     runner.register_observer(VizdoomContextualEvaluation())
         
-def register_custom_doom_env(num_contexts, name='doom_battle_contexts_train'):
+def register_custom_doom_env(base_name='doom_battle', name='doom_battle', num_contexts=-1,  max_pure_expl_steps=0):
     # absolute path needs to be specified, otherwise Doom will look in the SampleFactory scenarios folder
-    scenario_absolute_path = join(os.path.dirname(__file__), "custom_env", "doom_battle_contexts.cfg")
+    base_env_spec = doom_env_by_name(base_name)
     spec = DoomSpec(
         name,
-        scenario_absolute_path,  # use your custom cfg here
-        doom_action_space_extended(),
-        extra_wrappers=[(ContextualWrapper, {'num_contexts': num_contexts})],
+        base_env_spec.env_spec_file,  # use your custom cfg here
+        base_env_spec.action_space,
+        extra_wrappers=[(ExploreGoWrapper, {'max_pure_expl_steps': max_pure_expl_steps}), (ContextualWrapper, {'num_contexts': num_contexts})],
     )
 
     # register the env with Sample Factory
@@ -282,8 +283,12 @@ def main():
     # second parsing pass yields the final configuration
     cfg = parse_full_cfg(parser)
 
-    register_custom_doom_env(name='doom_battle_contexts', num_contexts=cfg.num_contexts)
-    register_custom_doom_env(name='doom_battle_contexts_test', num_contexts=-1)
+    register_custom_doom_env(base_name=cfg.env, name=cfg.env, num_contexts=cfg.num_contexts, max_pure_expl_steps=cfg.max_pure_expl_steps)
+    register_custom_doom_env(base_name=cfg.env, name=cfg.env + '_test', num_contexts=-1)
+
+    # ensure there is no env decorrelation since that is basically similar to what Explore-Go is trying to do
+    cfg.decorrelate_experience_max_seconds = 0
+    cfg.decorrelate_envs_on_one_worker = False
 
     # explicitly create the runner instead of simply calling run_rl()
     # this allows us to register additional message handlers

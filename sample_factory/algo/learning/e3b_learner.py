@@ -2,15 +2,20 @@ from __future__ import annotations
 
 import glob
 import os
+import random
 import time
 from abc import ABC, abstractmethod
 from os.path import join
 from typing import Callable, Dict, Optional, Tuple
+from gymnasium import spaces
 
 import numpy as np
 import torch
 from torch import Tensor
 from torch.nn import Module
+import torch.nn.functional as F
+
+from collections import defaultdict
 
 from sample_factory.algo.learning.rnn_utils import build_core_out_from_seq, build_rnn_inputs
 from sample_factory.algo.utils.action_distributions import get_action_distribution, is_continuous_action_space
@@ -31,6 +36,38 @@ from sample_factory.utils.timing import Timing
 from sample_factory.utils.typing import ActionDistribution, Config, InitModelData, PolicyID
 from sample_factory.utils.utils import ensure_dir_exists, experiment_dir, log
 
+def flatdim(space):
+    if isinstance(space, spaces.Box):
+        return int(np.prod(space.shape))
+    elif isinstance(space, spaces.Discrete):
+        return int(space.n)
+    elif isinstance(space, spaces.Tuple):
+        return int(np.prod([flatdim(s) for s in space.spaces]))
+    elif isinstance(space, spaces.Dict):
+        return int(np.prod([flatdim(s) for s in space.spaces.values()]))
+    elif isinstance(space, spaces.MultiBinary):
+        return int(space.n)
+    elif isinstance(space, spaces.MultiDiscrete):
+        return int(np.prod(space.shape))
+    else:
+        raise NotImplementedError
+    
+def _flatten_actions(space, x, y):
+    if isinstance(space, spaces.Discrete):
+        n = flatdim(space)
+        y = y * n + x
+    elif isinstance(space, spaces.Tuple):
+        for x_part, s in zip(x, space.spaces):
+            y = _flatten_actions(s, x_part, y)
+    else:
+        raise NotImplementedError
+    return y
+
+def flatten_actions(space, x):
+    if len(x.shape) > 1:
+        return torch.stack([_flatten_actions(space, x_i, 0) for x_i in x], dim=0)
+    else:
+        return _flatten_actions(space, x, 0)
 
 class LearningRateScheduler:
     def update(self, current_lr, recent_kls):
@@ -206,6 +243,20 @@ class Learner(Configurable):
         # initialize device
         self.device = policy_device(self.cfg, self.policy_id)
 
+        num_unique_envs = self.cfg.num_workers*self.cfg.num_envs_per_worker*self.cfg.worker_num_splits*self.cfg.num_policies
+        
+        # if 'e3b' in self.cfg.intrinsic_reward_episodic:
+        #     d = self.cfg.encoder_hidden_dim
+        #     self.inverse_cov_init = torch.eye(d) * 1./self.cfg.e3b_ridge
+        #     self.inverse_cov = self.inverse_cov_init.repeat(num_unique_envs, 1, 1).to(self.device)
+        #     self.outer_product_buffers = torch.empty(int(self.cfg.batch_size / self.cfg.rollout), d, d).to(self.device)
+        #     self.start_step = torch.zeros(num_unique_envs).to(self.device).long()
+        #     self.n_episodes = 0
+                        
+
+            
+            
+
         log.debug("Initializing actor-critic model on device %s", self.device)
 
         # trainable torch module
@@ -232,15 +283,12 @@ class Learner(Configurable):
         optimizer_cls = optimizer_cls[self.cfg.optimizer]
         log.debug(f"Using optimizer {optimizer_cls}")
 
-        optimizer_kwargs = dict(
+        self.optimizer = optimizer_cls(
+            params,
             lr=self.cfg.learning_rate,  # use default lr only in ctor, then we use the one loaded from the checkpoint
             betas=(self.cfg.adam_beta1, self.cfg.adam_beta2),
+            eps=self.cfg.adam_eps,
         )
-
-        if self.cfg.optimizer in ["adam", "lamb"]:
-            optimizer_kwargs["eps"] = self.cfg.adam_eps
-
-        self.optimizer = optimizer_cls(params, **optimizer_kwargs)
 
         self.load_from_checkpoint(self.policy_id)
         self.param_server.init(self.actor_critic, self.train_step, self.device)
@@ -249,6 +297,54 @@ class Learner(Configurable):
         self.lr_scheduler = get_lr_scheduler(self.cfg)
         self.curr_lr = self.cfg.learning_rate if self.curr_lr is None else self.curr_lr
         self._apply_lr(self.curr_lr)
+
+
+
+        if 'e3b' in self.cfg.intrinsic_reward_episodic or 'e3b' in self.cfg.intrinsic_reward_global:
+            # initialize IDM for E3B
+#            from sample_factory.model.encoder import default_make_encoder_func            
+            # from sf_examples.minihack.train_minihack import make_custom_encoder # TODO: don't hardcode Minihack encoder
+            from sf_examples.vizdoom.doom.doom_model import make_vizdoom_encoder
+            from sample_factory.model.inverse_dynamics import default_make_idm_func
+#            self.feature_encoder = default_make_encoder_func(self.cfg, self.env_info.obs_space)
+            self.feature_encoder = make_vizdoom_encoder(self.cfg, self.env_info.obs_space)
+            self.inverse_dynamics_model = default_make_idm_func(self.env_info.action_space, self.feature_encoder.get_out_size())
+
+            log.debug("Created feature encoder model with architecture:")
+            log.debug(self.feature_encoder)
+            log.debug("Created inverse dynamics model with architecture:")
+            log.debug(self.inverse_dynamics_model)
+
+            if 'e3b' in self.cfg.intrinsic_reward_episodic:
+                d = self.feature_encoder.get_out_size()
+                self.inverse_cov_init = torch.eye(d) * 1./self.cfg.e3b_ridge
+                self.inverse_cov = self.inverse_cov_init.repeat(num_unique_envs, 1, 1).to(self.device)
+                self.outer_product_buffers = torch.empty(int(self.cfg.batch_size / self.cfg.rollout), d, d).to(self.device)
+                self.start_step = torch.zeros(num_unique_envs).to(self.device).long()
+                self.n_episodes = 0
+            
+            
+            self.feature_encoder.model_to_device(self.device)
+            self.inverse_dynamics_model.model_to_device(self.device)
+
+            idm_params = list(self.feature_encoder.parameters()) + list(self.inverse_dynamics_model.parameters())
+
+            self.idm_optimizer = optimizer_cls(
+                idm_params,
+                lr=self.cfg.learning_rate,  
+                betas=(self.cfg.adam_beta1, self.cfg.adam_beta2),
+                eps=self.cfg.adam_eps,
+            )
+
+
+        self.loss_summaries = dict()
+            
+            
+
+
+
+
+        
 
         self.is_initialized = True
 
@@ -545,6 +641,7 @@ class Learner(Configurable):
 
             valids = mb.valids
 
+
         # calculate policy head outside of recurrent loop
         with self.timing.add_time("forward_head"):
             head_outputs = self.actor_critic.forward_head(mb.normalized_obs)
@@ -615,6 +712,7 @@ class Learner(Configurable):
                 next_values = values_cpu[recurrence - 1 :: recurrence] - rewards_cpu[recurrence - 1 :: recurrence]
                 next_values /= self.cfg.gamma
                 next_vs = next_values
+
 
                 for i in reversed(range(self.cfg.recurrence)):
                     rewards = rewards_cpu[i::recurrence]
@@ -709,6 +807,51 @@ class Learner(Configurable):
                 force_summaries = False
                 minibatches = self._get_minibatches(batch_size, experience_size)
 
+
+
+#            loss_summaries = dict()
+            if 'e3b' in self.cfg.intrinsic_reward_episodic or 'e3b' in self.cfg.intrinsic_reward_global:
+
+                # following advice from https://youtu.be/9mS1fIYj1So set grad to None instead of optimizer.zero_grad()
+                for p in self.feature_encoder.parameters():
+                    p.grad = None
+                for p in self.inverse_dynamics_model.parameters():
+                    p.grad = None
+                
+                self.idm_optimizer.zero_grad()
+                inputs = gpu_buffer['normalized_obs']
+                actions = gpu_buffer['actions']
+                actions = flatten_actions(self.env_info.action_space, actions)
+                dones = gpu_buffer['dones']
+                B = int(self.cfg.batch_size / self.cfg.rollout)
+                actions = actions.view(B, self.cfg.rollout)[:, :-1].contiguous().view(-1).long()
+                dones = dones.view(B, self.cfg.rollout)[:, :-1].contiguous().view(-1).float()
+                dones_masks = 1 - dones
+                
+                phi = self.feature_encoder(gpu_buffer['normalized_obs'])
+                phi = phi.view(B, self.cfg.rollout, -1)
+                phi_step_t = phi[:, :-1]
+                phi_step_tp1 = phi[:, 1:]
+                phi_step_t = torch.flatten(phi_step_t, 0, 1)
+                phi_step_tp1 = torch.flatten(phi_step_tp1, 0, 1)
+                pred_action_logits = self.inverse_dynamics_model(phi_step_t, phi_step_tp1)
+                pred_action_logits = torch.log_softmax(pred_action_logits, dim=1)
+                inverse_dynamics_loss = F.nll_loss(pred_action_logits, actions, reduction='none')
+                inverse_dynamics_loss *= dones_masks
+                inverse_dynamics_loss = torch.sum(inverse_dynamics_loss) / dones_masks.sum()
+                
+                inverse_dynamics_loss.backward()
+
+                if self.cfg.max_grad_norm > 0.0:
+                    with timing.add_time("clip"):
+                        torch.nn.utils.clip_grad_norm_(self.feature_encoder.parameters(), self.cfg.max_grad_norm)
+                        torch.nn.utils.clip_grad_norm_(self.inverse_dynamics_model.parameters(), self.cfg.max_grad_norm)
+
+                
+                self.idm_optimizer.step()
+                self.loss_summaries['inverse_dynamics_loss'] = inverse_dynamics_loss.item()
+                
+            
             for batch_num in range(len(minibatches)):
                 with torch.no_grad(), timing.add_time("minibatch_init"):
                     indices = minibatches[batch_num]
@@ -727,8 +870,9 @@ class Learner(Configurable):
                         kl_old,
                         kl_loss,
                         value_loss,
-                        loss_summaries,
+                        loss_summaries_,
                     ) = self._calculate_losses(mb, num_invalids)
+                    self.loss_summaries.update(loss_summaries_)
 
                 with timing.add_time("losses_postprocess"):
                     # noinspection PyTypeChecker
@@ -807,7 +951,7 @@ class Learner(Configurable):
                     should_record_summaries |= force_summaries
                     if should_record_summaries:
                         # hacky way to collect all of the intermediate variables for summaries
-                        summary_vars = {**locals(), **loss_summaries}
+                        summary_vars = {**locals(), **self.loss_summaries}
                         stats_and_summaries = self._record_summaries(AttrDict(summary_vars))
                         del summary_vars
                         force_summaries = False
@@ -843,7 +987,18 @@ class Learner(Configurable):
         self.last_summary_time = time.time()
         stats = AttrDict()
 
-        stats.env_steps = self.env_steps
+        if 'inverse_dynamics_loss' in train_loop_vars.keys():
+            stats.inverse_dynamics_loss = train_loop_vars.inverse_dynamics_loss
+        if 'normalized_intrinsic_rewards' in train_loop_vars.keys():
+            stats.normalized_intrinsic_rewards = train_loop_vars.normalized_intrinsic_rewards
+        if 'unnormalized_intrinsic_rewards' in train_loop_vars.keys():
+            stats.unnormalized_intrinsic_rewards = train_loop_vars.unnormalized_intrinsic_rewards
+        if 'unnormalized_intrinsic_rewards_episodic' in train_loop_vars.keys():
+            stats.unnormalized_intrinsic_rewards_episodic = train_loop_vars.unnormalized_intrinsic_rewards_episodic
+        if 'unnormalized_intrinsic_rewards_global' in train_loop_vars.keys():
+            stats.unnormalized_intrinsic_rewards_global = train_loop_vars.unnormalized_intrinsic_rewards_global
+            
+        
         stats.lr = self.curr_lr
         stats.actual_lr = train_loop_vars.actual_lr  # potentially scaled because of masked data
 
@@ -867,12 +1022,10 @@ class Learner(Configurable):
         stats.act_min = var.mb.actions.min()
         stats.act_max = var.mb.actions.max()
 
-        if "adv_mean" in stats:
-            stats.adv_min = var.mb.advantages.min()
-            stats.adv_max = var.mb.advantages.max()
-            stats.adv_std = var.adv_std
-            stats.adv_mean = var.adv_mean
-
+        stats.adv_min = var.mb.advantages.min()
+        stats.adv_max = var.mb.advantages.max()
+        stats.adv_std = var.adv_std
+        stats.adv_mean = var.adv_mean
         stats.max_abs_logprob = torch.abs(var.mb.action_logits).max()
 
         if hasattr(var.action_distribution, "summaries"):
@@ -905,8 +1058,7 @@ class Learner(Configurable):
         # this caused numerical issues on some versions of PyTorch with second moment reaching infinity
         adam_max_second_moment = 0.0
         for key, tensor_state in self.optimizer.state.items():
-            if "exp_avg_sq" in tensor_state:
-                adam_max_second_moment = max(tensor_state["exp_avg_sq"].max().item(), adam_max_second_moment)
+            adam_max_second_moment = max(tensor_state["exp_avg_sq"].max().item(), adam_max_second_moment)
         stats.adam_max_second_moment = adam_max_second_moment
 
         version_diff = (var.curr_policy_version - var.mb.policy_version)[var.mb.policy_id == self.policy_id]
@@ -937,7 +1089,68 @@ class Learner(Configurable):
 
         return normalized_obs
 
+
+    
+
+    def _compute_intrinsic_rewards(self, buff, bonus_type):
+        B, T = buff['actions'].shape[:2]
+        dones = buff['dones'].view(B, T)
+        env_id = buff['env_id'].long()            
+        
+        if bonus_type == 'e3b':
+            # encoder_input = {'glyphs': buff['normalized_obs']['glyphs'][:, :-1],
+            #                  'blstats': buff['normalized_obs']['blstats'][:, :-1],
+            #                  'message': buff['normalized_obs']['message'][:, :-1]}
+            encoder_input = buff['normalized_obs'][:,:-1]
+            dataset_size = B*T
+            for d, k, v in iterate_recursively(encoder_input):
+                if k not in ['env_id', 'start_step']:
+                    # collapse first two dimensions (batch and time) into a single dimension
+                    d[k] = v.reshape((dataset_size,) + tuple(v.shape[2:]))  
+
+            phi = self.feature_encoder(encoder_input)
+            phi = phi.view(B, T, -1)
+            dones = buff['dones'].view(B, T)
+            env_id = buff['env_id'].long()
+            # make sure all trajectories are from distinct envs
+            unique_envs = torch.unique(env_id)
+            if torch.numel(env_id) != torch.numel(unique_envs):
+                print(torch.sort(env_id))
+            #assert torch.numel(env_id) == torch.numel(unique_envs)
+            
+            # make sure each trajectory comes after previous ones
+            start_steps = self.start_step[env_id]
+            # assert torch.all(buff['start_step'] > start_steps).item()
+                
+            batch_inverse_covs = self.inverse_cov[env_id]
+            intrinsic_rewards = torch.zeros(B, T).to(self.device)
+                
+            for t in range(T):
+                phi_t = phi[:, t]
+                u = torch.bmm(phi_t.unsqueeze(1), batch_inverse_covs)
+                elliptical_bonus = torch.bmm(u, phi_t.unsqueeze(2))
+                intrinsic_rewards[:, t].copy_(elliptical_bonus.squeeze())
+                torch.bmm(u.permute(0, 2, 1), u, out=self.outer_product_buffers)
+                torch.mul(self.outer_product_buffers, -1./(1. + elliptical_bonus), out=self.outer_product_buffers)
+                torch.add(batch_inverse_covs, self.outer_product_buffers, out=batch_inverse_covs)
+                # if any episodes are done, reset the (inverse) covariance matrix
+                if torch.any(dones[:, t]).item():
+                    for b in range(B):
+                        if dones[b][t]:
+                            self.n_episodes += 1                                                                    
+                            batch_inverse_covs[b].copy_(self.inverse_cov_init)
+                                                    
+            self.inverse_cov.index_copy_(0, env_id, batch_inverse_covs)
+            self.start_step.index_copy_(0, env_id, buff['start_step'])
+
+        return intrinsic_rewards
+
+
+
+
+    
     def _prepare_batch(self, batch: TensorDict) -> Tuple[TensorDict, int, int]:
+
         with torch.no_grad():
             # create a shallow copy so we can modify the dictionary
             # we still reference the same buffers though
@@ -958,6 +1171,46 @@ class Learner(Configurable):
             buff["normalized_obs"] = self._prepare_and_normalize_obs(buff["obs"])
             del buff["obs"]  # don't need non-normalized obs anymore
 
+
+        with torch.no_grad():
+            # calculate intrinsic rewards if needed
+
+            B, T = buff['actions'].shape[:2]
+
+            # single reward type
+            if self.cfg.intrinsic_reward_episodic != 'none':
+                intrinsic_rewards_episodic = self._compute_intrinsic_rewards(buff, self.cfg.intrinsic_reward_episodic)
+                self.loss_summaries['unnormalized_intrinsic_rewards_episodic'] = intrinsic_rewards_episodic.mean().item()
+
+            if self.cfg.intrinsic_reward_global != 'none':
+                intrinsic_rewards_global = self._compute_intrinsic_rewards(buff, self.cfg.intrinsic_reward_global)
+                self.loss_summaries['unnormalized_intrinsic_rewards_global'] = intrinsic_rewards_global.mean().item()
+
+            if self.cfg.intrinsic_reward_global != 'none' and self.cfg.intrinsic_reward_episodic != 'none':
+                intrinsic_rewards = intrinsic_rewards_episodic * intrinsic_rewards_global
+            elif self.cfg.intrinsic_reward_global == 'none' and self.cfg.intrinsic_reward_episodic != 'none':
+                intrinsic_rewards = intrinsic_rewards_episodic
+            elif self.cfg.intrinsic_reward_global != 'none' and self.cfg.intrinsic_reward_episodic == 'none':
+                intrinsic_rewards = intrinsic_rewards_global
+            else:
+                intrinsic_rewards = None
+
+            if intrinsic_rewards is not None:
+                intrinsic_rewards = intrinsic_rewards.view(-1)
+                self.loss_summaries['unnormalized_intrinsic_rewards'] = intrinsic_rewards.mean().item()
+                # return normalization parameters are only used on the learner, no need to lock the mutex
+                if self.cfg.normalize_intrinsic_rewards:
+                    self.actor_critic.intrinsic_reward_normalizer(intrinsic_rewards)  # in-place
+                self.loss_summaries['normalized_intrinsic_rewards'] = intrinsic_rewards.mean().item()
+                intrinsic_rewards = intrinsic_rewards.view(B, T)
+                # buff['rewards'] = buff['rewards'] + self.cfg.intrinsic_reward_coeff * intrinsic_rewards
+                buff['rewards'] = self.cfg.intrinsic_reward_coeff * intrinsic_rewards
+                    
+                    
+            
+            
+
+        with torch.no_grad():
             # calculate estimated value for the next step (T+1)
             normalized_last_obs = buff["normalized_obs"][:, -1]
             next_values = self.actor_critic(normalized_last_obs, buff["rnn_states"][:, -1], values_only=True)["values"]
@@ -1007,7 +1260,9 @@ class Learner(Configurable):
             for d, k, v in iterate_recursively(buff):
                 if k not in ['env_id', 'start_step']:
                     # collapse first two dimensions (batch and time) into a single dimension
-                    d[k] = v.reshape((dataset_size,) + tuple(v.shape[2:]))
+                    d[k] = v.reshape((dataset_size,) + tuple(v.shape[2:]))                    
+
+
 
             buff["dones_cpu"] = buff["dones"].to("cpu", copy=True, dtype=torch.float, non_blocking=True)
             buff["rewards_cpu"] = buff["rewards"].to("cpu", copy=True, dtype=torch.float, non_blocking=True)
