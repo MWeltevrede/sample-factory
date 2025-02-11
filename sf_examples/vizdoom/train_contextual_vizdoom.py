@@ -249,16 +249,19 @@ class VizdoomContextualEvaluation(AlgoObserver):
         
 
 def add_custom_args(parser: argparse.ArgumentParser) -> None:
+    #parser.add_argument("--env", type=str, default='doom_battle_contexts', help="The name of the environment")
     parser.add_argument("--num_contexts", type=int, default=0, help="The number of contexts (seeds) seen during training.")
-    parser.add_argument("--max_num_episodes", type=int, default=10, help="The number of episodes to evaluate the policy on.")
+    parser.add_argument("--max_num_episodes", type=int, default=30, help="The number of episodes to evaluate the policy on.")
     
 def register_msg_handlers(cfg: Config, runner: Runner):
     # extra functions to evaluate on the full set of seeds
     runner.register_observer(VizdoomContextualEvaluation())
         
-def register_custom_doom_env(num_contexts, name='doom_battle_contexts_train'):
+def register_custom_doom_env(num_contexts, name, test=False):
     # absolute path needs to be specified, otherwise Doom will look in the SampleFactory scenarios folder
-    scenario_absolute_path = join(os.path.dirname(__file__), "custom_env", "doom_battle_contexts.cfg")
+    scenario_absolute_path = join(os.path.dirname(__file__), "doom", "scenarios", f"{name}.cfg")
+    if test:
+        name += '_test'
     spec = DoomSpec(
         name,
         scenario_absolute_path,  # use your custom cfg here
@@ -282,8 +285,8 @@ def main():
     # second parsing pass yields the final configuration
     cfg = parse_full_cfg(parser)
 
-    register_custom_doom_env(name='doom_battle_contexts', num_contexts=cfg.num_contexts)
-    register_custom_doom_env(name='doom_battle_contexts_test', num_contexts=-1)
+    register_custom_doom_env(name=cfg.env, num_contexts=cfg.num_contexts)
+    register_custom_doom_env(name=cfg.env, num_contexts=-1, test=True)
 
     # explicitly create the runner instead of simply calling run_rl()
     # this allows us to register additional message handlers

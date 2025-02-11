@@ -6,6 +6,12 @@ __pycache__/
 # C extensions
 *.so
 
+#Container images
+*.sif
+
+#slurm outputs
+slurm_out/*
+
 # Distribution / packaging
 .Python
 build/
