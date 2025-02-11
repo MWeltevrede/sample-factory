@@ -56,7 +56,12 @@ class ActorState:
         self.global_env_idx: int = global_env_idx  # global index of the policy in the entire system
 
         self.policy_mgr = policy_mgr
-        self.curr_policy_id = self.policy_mgr.get_policy_for_agent(agent_idx, env_idx, global_env_idx)
+        # self.curr_policy_id = self.policy_mgr.get_policy_for_agent(agent_idx, env_idx, global_env_idx)
+        if cfg.max_pure_expl_steps > 0:
+            self.curr_policy_id = 1
+        else:
+            self.curr_policy_id = self.policy_mgr.get_policy_for_agent(agent_idx, env_idx, global_env_idx)
+            
         self._env_set_curr_policy()
 
         self.curr_traj_buffer_idx: int = -4242424242  # uninitialized
@@ -208,10 +213,24 @@ class ActorState:
 
             self._update_training_info()
 
-            new_policy_id = self.policy_mgr.get_policy_for_agent(self.agent_idx, self.env_idx, self.global_env_idx)
+            # new_policy_id = self.policy_mgr.get_policy_for_agent(self.agent_idx, self.env_idx, self.global_env_idx)
+            if self.cfg.max_pure_expl_steps > 0:
+                new_policy_id = 1
+            else:
+                new_policy_id = self.policy_mgr.get_policy_for_agent(self.agent_idx, self.env_idx, self.global_env_idx)
             if new_policy_id != self.curr_policy_id:
                 self._on_new_policy(new_policy_id)
 
+            self.last_episode_reward = self.last_episode_duration = 0.0
+
+        # switch from pure exploration phase to normal policy
+        if info['step_count'][0] == info['step_count'][1] and self.cfg.max_pure_expl_steps > 0:
+            # switch from pure exploration phase to normal policy
+            self.curr_traj_buffer["dones"][rollout_step] = True
+            self.curr_traj_buffer["time_outs"][rollout_step] = True
+            new_policy_id = 0
+            if new_policy_id != self.curr_policy_id:
+                self._on_new_policy(new_policy_id)
             self.last_episode_reward = self.last_episode_duration = 0.0
 
         return report
@@ -276,7 +295,15 @@ class ActorState:
             policy_buffers[policy_id] = traj_buffer_idx
 
             t_id = f"{policy_id}_{self.worker_idx}_{self.split_idx}_{self.env_idx}_{self.agent_idx}_{self.num_trajectories}"
-            traj_dict = dict(t_id=t_id, length=rollout_step, policy_id=policy_id, traj_buffer_idx=traj_buffer_idx)
+            # create unique identifier for the env:
+            # assert self.cfg.num_policies == 1 and self.agent_idx == 0
+            unique_env_id = self.env_idx
+            unique_env_id += self.cfg.num_envs_per_worker*self.worker_idx
+            unique_env_id += self.cfg.num_workers*self.cfg.num_envs_per_worker*self.split_idx
+            unique_env_id += self.cfg.num_workers*self.cfg.num_envs_per_worker*self.cfg.worker_num_splits*policy_id
+            unique_env_id += self.cfg.num_workers*self.cfg.num_envs_per_worker*self.cfg.worker_num_splits*self.cfg.num_policies*self.agent_idx
+
+            traj_dict = dict(t_id=t_id, length=rollout_step, policy_id=policy_id, traj_buffer_idx=traj_buffer_idx, unique_env_id=unique_env_id, rollout_step=rollout_step)
             trajectories.append(traj_dict)
             self.num_trajectories += 1
 
@@ -428,6 +455,8 @@ class NonBatchedVectorEnvRunner(VectorEnvRunner):
         for env_i, e in enumerate(self.envs):
             seed = self.actor_states[env_i][0].global_env_idx
             observations, info = e.reset(seed=seed)  # new way of doing seeding since Gym 0.26.0
+            for i, o in enumerate(observations):
+                o['step_count'] = info[i]['step_count']
 
             if self.cfg.decorrelate_envs_on_one_worker:
                 env_i_split = self.num_envs * self.split_idx + env_i
@@ -437,6 +466,8 @@ class NonBatchedVectorEnvRunner(VectorEnvRunner):
                 for decorrelate_step in range(decorrelate_steps):
                     actions = [e.action_space.sample(obs.get("action_mask")) for obs in observations]
                     observations, rew, terminated, truncated, info = e.step(actions)
+                    for i, o in enumerate(observations):
+                        o['step_count'] = info[i]['step_count']
 
             for agent_i, obs in enumerate(observations):
                 actor_state = self.actor_states[env_i][agent_i]
@@ -632,6 +663,8 @@ class NonBatchedVectorEnvRunner(VectorEnvRunner):
             with timing.add_time("env_step"):
                 actions = [s.curr_actions() for s in self.actor_states[env_i]]
                 new_obs, rewards, terminated, truncated, infos = e.step(actions)
+                for i, o in enumerate(new_obs):
+                    o['step_count'] = infos[i]['step_count']
 
             with timing.add_time("overhead"):
                 stats = self._process_env_step(new_obs, rewards, terminated, truncated, infos, env_i)
