@@ -63,7 +63,7 @@ def evaluate_full_contexts(runner: Runner, writer, env_steps, policy_id) -> None
     verbose = True
 
     cfg = load_from_checkpoint(cfg)
-    cfg.max_num_frames = 20000
+    cfg.max_num_frames = 1000000
 
     eval_env_frameskip: int = cfg.env_frameskip if cfg.eval_env_frameskip is None else cfg.eval_env_frameskip
     assert (
@@ -251,24 +251,30 @@ class VizdoomContextualEvaluation(AlgoObserver):
 
 def add_custom_args(parser: argparse.ArgumentParser) -> None:
     #parser.add_argument("--env", type=str, default='doom_battle_contexts', help="The name of the environment")
-    parser.add_argument("--num_contexts", type=int, default=0, help="The number of contexts (seeds) seen during training.")
-    parser.add_argument("--max_num_episodes", type=int, default=30, help="The number of episodes to evaluate the policy on.")
+    parser.add_argument("--num_contexts", 
+                        type=int, default=0, help="The number of contexts (seeds) seen during training.")
+    parser.add_argument("--max_num_episodes", 
+                        type=int, default=30, help="The number of episodes to evaluate the policy on.")
+    parser.add_argument("--max_pure_expl_steps",
+                        default = 0,
+                        type=int,
+                        help="Maximum number of pure exploration steps to take in ExploreGo. A value of 0 means no ExploreGo"
+    )
     
 def register_msg_handlers(cfg: Config, runner: Runner):
     # extra functions to evaluate on the full set of seeds
     runner.register_observer(VizdoomContextualEvaluation())
         
-def register_custom_doom_env(base_name='doom_battle', name='doom_battle', num_contexts=-1,  max_pure_expl_steps=0):
-def register_custom_doom_env(num_contexts, name, test=False):
+def register_custom_doom_env(name='doom_battle', num_contexts=-1,  max_pure_expl_steps=0, test=False):
     # absolute path needs to be specified, otherwise Doom will look in the SampleFactory scenarios folder
-    base_env_spec = doom_env_by_name(base_name)
+    #base_env_spec = doom_env_by_name(base_name)
     scenario_absolute_path = join(os.path.dirname(__file__), "doom", "scenarios", f"{name}.cfg")
     if test:
         name += '_test'
     spec = DoomSpec(
         name,
-        base_env_spec.env_spec_file,  # use your custom cfg here
-        base_env_spec.action_space,
+        scenario_absolute_path,  # use your custom cfg here
+        doom_action_space_extended(),
         extra_wrappers=[(ExploreGoWrapper, {'max_pure_expl_steps': max_pure_expl_steps}), (ContextualWrapper, {'num_contexts': num_contexts})],
     )
 
@@ -288,14 +294,17 @@ def main():
     # second parsing pass yields the final configuration
     cfg = parse_full_cfg(parser)
 
-    register_custom_doom_env(base_name=cfg.env, name=cfg.env, num_contexts=cfg.num_contexts, max_pure_expl_steps=cfg.max_pure_expl_steps)
-    register_custom_doom_env(base_name=cfg.env, name=cfg.env + '_test', num_contexts=-1)
+    register_custom_doom_env(name=cfg.env, num_contexts=cfg.num_contexts, max_pure_expl_steps=cfg.max_pure_expl_steps)
+    register_custom_doom_env(name=cfg.env + '_test', num_contexts=-1)
 
     # ensure there is no env decorrelation since that is basically similar to what Explore-Go is trying to do
     cfg.decorrelate_experience_max_seconds = 0
     cfg.decorrelate_envs_on_one_worker = False
-    register_custom_doom_env(name=cfg.env, num_contexts=cfg.num_contexts)
-    register_custom_doom_env(name=cfg.env, num_contexts=-1, test=True)
+    
+    if cfg.max_pure_expl_steps > 0:
+        cfg.num_policies = 2
+    else:
+        cfg.num_policies = 1
 
     # explicitly create the runner instead of simply calling run_rl()
     # this allows us to register additional message handlers
