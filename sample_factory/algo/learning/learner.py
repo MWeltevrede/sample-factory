@@ -164,6 +164,7 @@ class Learner(Configurable):
         self.summary_rate_decay_seconds = LinearDecay([(0, 2), (100000, 60), (1000000, 120)])
         self.last_summary_time = 0
         self.last_milestone_time = 0
+        self.last_checkpoint_steps = 0
 
         # shared tensor used to share the latest policy version between processes
         self.policy_versions_tensor: Tensor = policy_versions_tensor
@@ -360,15 +361,17 @@ class Learner(Configurable):
         return self._save_impl("checkpoint", "", self.cfg.keep_checkpoints)
 
     def save_milestone(self):
-        checkpoint = self._get_checkpoint_dict()
-        assert checkpoint is not None
-        checkpoint_dir = self.checkpoint_dir(self.cfg, self.policy_id)
-        checkpoint_name = f"checkpoint_{self.train_step:09d}_{self.env_steps}.pth"
+        if self.cfg.milestone_step_freq > -1 and self.env_steps - self.last_checkpoint_steps > self.cfg.milestone_step_freq:
+            self.last_checkpoint_steps = self.env_steps
+            checkpoint = self._get_checkpoint_dict()
+            assert checkpoint is not None
+            checkpoint_dir = self.checkpoint_dir(self.cfg, self.policy_id)
+            checkpoint_name = f"checkpoint_{self.train_step:09d}_{self.env_steps}.pth"
 
-        milestones_dir = ensure_dir_exists(join(checkpoint_dir, "milestones"))
-        milestone_path = join(milestones_dir, f"{checkpoint_name}")
-        log.info("Saving a milestone %s", milestone_path)
-        torch.save(checkpoint, milestone_path)
+            milestones_dir = ensure_dir_exists(join(checkpoint_dir, "milestones"))
+            milestone_path = join(milestones_dir, f"{checkpoint_name}")
+            log.info("Saving a milestone after %i steps %s", self.env_steps, milestone_path)
+            torch.save(checkpoint, milestone_path)
 
     def save_best(self, policy_id, metric, metric_value) -> bool:
         if policy_id != self.policy_id:

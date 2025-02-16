@@ -15,7 +15,7 @@ def init_wandb(cfg):
 
     if "wandb_unique_id" not in cfg:
         # if we're going to restart the experiment, this will be saved to a json file
-        cfg.wandb_unique_id = f'{cfg.experiment}_{datetime.now().strftime("%Y%m%d_%H%M%S_%f")}'
+        cfg.wandb_unique_id = f'{cfg.experiment}_{datetime.now().strftime("%m%d_%H%M%S_%f")}'
 
     wandb_unique_id = cfg.wandb_unique_id
     wandb_group = cfg.env if cfg.wandb_group is None else cfg.wandb_group

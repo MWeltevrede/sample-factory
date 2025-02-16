@@ -8,4 +8,6 @@
 #python -m sf_examples.vizdoom.train_contextual_vizdoom --with_wandb=True --algo=APPO --env=doom_battle_contexts --experiment=doom_contexts --save_every_sec=5 --experiment_summaries_interval=10
 
 
-python -m sample_factory.launcher.run --run=sf_examples.vizdoom.experiments.doom_battle_contexts --backend=processes --num_gpus=1 --max_parallel=4  --pause_between=0 --experiments_per_gpu=2
+#python -m sample_factory.launcher.run --run=sf_examples.vizdoom.experiments.doom_battle_contexts --backend=processes --num_gpus=1 --max_parallel=4  --pause_between=0 --experiments_per_gpu=2
+
+python -m sample_factory.launcher.run --run=sf_examples.vizdoom.experiments.doom_contexts --backend=processes --num_gpus=1 --max_parallel=1 --pause_between=0 --experiments_per_gpu=2

@@ -4,21 +4,23 @@ from sample_factory.launcher.run_description import Experiment, ParamGrid, RunDe
 _params = ParamGrid(
     [
         ("env", ["health_gathering_supreme"]),
-        ("seed", range(2)),
-        ("num_contexts", [20]),
-        ("max_pure_expl_steps", [0])
+        ("seed", [7]),
+        ("num_contexts", [5]),
+        ("max_pure_expl_steps", [200])
     ]
 )
 
 _experiment = Experiment(
     "dc",
-    "python -m sf_examples.vizdoom.train_contextual_vizdoom --save_every_sec=120 --wandb_project=vizdoom-slurm "+
+    "python -m sf_examples.vizdoom.train_contextual_vizdoom --save_every_sec=120 --wandb_project=vizdoom-threads-test "+
         "--with_wandb=True --train_for_env_steps=4000000000 "+
         "--algo=APPO --env_frameskip=4 --use_rnn=True "+
         "--wide_aspect_ratio=False "+
-        "--num_envs_per_worker=16 --decorrelate_envs_on_one_worker=False",
+        "--save_milestones_sec=120 --milestone_step_freq=1000000 "+
+        "--num_envs_per_worker=2 --decorrelate_envs_on_one_worker=False --num_workers=8",
     _params.generate_params(randomize=False),
 )
+# --force_envs_single_thread=True
 
 RUN_DESCRIPTION = RunDescription("doom_contexts", experiments=[_experiment])
 

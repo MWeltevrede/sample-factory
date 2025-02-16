@@ -469,6 +469,12 @@ def add_rl_args(p: ArgumentParser):
         help="Save intermediate checkpoints in a separate folder for later evaluation (default=never)",
     )
     p.add_argument(
+        "--milestone_step_freq",
+        default=-1,
+        type=int,
+        help="The step frequency for saving intermediate checkpoints in a separate folder for later evaluation (default=never)",
+    )
+    p.add_argument(
         "--save_best_every_sec",
         default=5,
         type=int,

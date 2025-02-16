@@ -26,7 +26,7 @@ from os.path import join
 from sample_factory.algo.runners.runner import AlgoObserver, Runner
 from sample_factory.cfg.arguments import parse_full_cfg, parse_sf_args
 from sample_factory.envs.env_utils import register_env
-# from sample_factory.train import run_rl
+from sf_examples.envpool.envpool_utils import add_envpool_common_args
 from sample_factory.algo.utils.misc import ExperimentStatus
 from sample_factory.utils.typing import Config, PolicyID
 from sample_factory.train import make_runner
@@ -283,6 +283,8 @@ def register_custom_doom_env(name='doom_battle', num_contexts=-1,  max_pure_expl
     register_env(spec.name, make_env_func)
 
 
+import pprint
+import time
 def main():
     """Script entry point."""
     register_vizdoom_components()
@@ -291,11 +293,12 @@ def main():
     add_doom_env_args(parser)
     doom_override_defaults(parser)
     add_custom_args(parser)
+    add_envpool_common_args(cfg.env,parser)
     # second parsing pass yields the final configuration
     cfg = parse_full_cfg(parser)
 
     register_custom_doom_env(name=cfg.env, num_contexts=cfg.num_contexts, max_pure_expl_steps=cfg.max_pure_expl_steps)
-    register_custom_doom_env(name=cfg.env + '_test', num_contexts=-1)
+    register_custom_doom_env(name=cfg.env, test=True, num_contexts=-1)
 
     # ensure there is no env decorrelation since that is basically similar to what Explore-Go is trying to do
     cfg.decorrelate_experience_max_seconds = 0
@@ -305,11 +308,12 @@ def main():
         cfg.num_policies = 2
     else:
         cfg.num_policies = 1
+ 
 
     # explicitly create the runner instead of simply calling run_rl()
     # this allows us to register additional message handlers
     cfg, runner = make_runner(cfg)
-    register_msg_handlers(cfg, runner)
+    #register_msg_handlers(cfg, runner)
     
     status = runner.init()
     if status == ExperimentStatus.SUCCESS:
