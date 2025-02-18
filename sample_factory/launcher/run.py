@@ -6,6 +6,7 @@ from sample_factory.algo.utils.misc import ExperimentStatus
 from sample_factory.launcher.run_ngc import add_ngc_args, run_ngc
 from sample_factory.launcher.run_processes import add_os_parallelism_args, run
 from sample_factory.launcher.run_slurm import add_slurm_args, run_slurm
+from sample_factory.launcher.run_slurm_explorego import run_slurm_explorego
 from sample_factory.utils.typing import Config
 from sample_factory.utils.utils import log
 
@@ -23,7 +24,7 @@ def launcher_argparser(args) -> argparse.ArgumentParser:
     parser.add_argument(
         "--backend",
         default="processes",
-        choices=["processes", "slurm", "ngc"],
+        choices=["processes", "slurm","slurm_explorego",  "ngc"],
         help="Launcher backend, use OS multiprocessing by default",
     )
     parser.add_argument("--pause_between", default=1, type=int, help="Pause in seconds between processes")
@@ -34,6 +35,8 @@ def launcher_argparser(args) -> argparse.ArgumentParser:
     partial_cfg, _ = parser.parse_known_args(args)
 
     if partial_cfg.backend == "slurm":
+        parser = add_slurm_args(parser)
+    elif partial_cfg.backend == "slurm_explorego":
         parser = add_slurm_args(parser)
     elif partial_cfg.backend == "ngc":
         parser = add_ngc_args(parser)
@@ -67,6 +70,8 @@ def main():
         run(run_description, launcher_cfg)
     elif launcher_cfg.backend == "slurm":
         run_slurm(run_description, launcher_cfg)
+    elif launcher_cfg.backend == "slurm_explorego":
+        run_slurm_explorego(run_description, launcher_cfg)
     elif launcher_cfg.backend == "ngc":
         run_ngc(run_description, launcher_cfg)
 
