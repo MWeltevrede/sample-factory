@@ -1114,8 +1114,8 @@ class Learner(Configurable):
             env_id = buff['env_id'].long()
             # make sure all trajectories are from distinct envs
             unique_envs = torch.unique(env_id)
-            if torch.numel(env_id) != torch.numel(unique_envs):
-                print(torch.sort(env_id))
+            # if torch.numel(env_id) != torch.numel(unique_envs):
+            #     print(torch.sort(env_id))
             #assert torch.numel(env_id) == torch.numel(unique_envs)
             
             # make sure each trajectory comes after previous ones

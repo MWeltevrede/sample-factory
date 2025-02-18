@@ -149,7 +149,8 @@ class Learner(Configurable):
 
         self.train_step: int = 0  # total number of SGD steps
         self.env_steps: int = 0  # total number of environment steps consumed by the learner
-
+        self.total_steps = 0
+        
         self.best_performance = -1e9
 
         # for configuration updates, i.e. from PBT
@@ -288,6 +289,7 @@ class Learner(Configurable):
         if load_progress:
             self.train_step = checkpoint_dict["train_step"]
             self.env_steps = checkpoint_dict["env_steps"]
+            self.total_steps = checkpoint_dict["total_steps"]
             self.best_performance = checkpoint_dict.get("best_performance", self.best_performance)
         self.actor_critic.load_state_dict(checkpoint_dict["model"])
         self.optimizer.load_state_dict(checkpoint_dict["optimizer"])
@@ -322,6 +324,7 @@ class Learner(Configurable):
         checkpoint = {
             "train_step": self.train_step,
             "env_steps": self.env_steps,
+            "total_steps": self.total_steps,
             "best_performance": self.best_performance,
             "model": self.actor_critic.state_dict(),
             "optimizer": self.optimizer.state_dict(),

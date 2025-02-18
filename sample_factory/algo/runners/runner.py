@@ -454,6 +454,10 @@ class Runner(EventLoopObject, Configurable):
         self.save_periodic.emit()
 
     def _save_milestone_policy(self):
+        total_steps = np.array([self.env_steps[i] for i in self.env_steps]).sum()
+        for learner in self.learners.values():
+            learner.total_steps = total_steps
+                    
         self.save_milestone.emit()
 
     def _save_best_policy(self):
@@ -733,6 +737,7 @@ class Runner(EventLoopObject, Configurable):
             self.all_components_stopped.emit()
 
     def _on_everything_stopped(self):
+        print("EVERYTHING IS STOPPED!!")
         # sort profiles by name
         self.component_profiles = sorted(list(self.component_profiles.items()), key=lambda x: x[0])
         for component, profile in self.component_profiles:
