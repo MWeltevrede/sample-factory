@@ -273,12 +273,12 @@ def main():
     cfg.decorrelate_experience_max_seconds = 0
     cfg.decorrelate_envs_on_one_worker = False
     
-    if cfg.max_pure_expl_steps > 0:
-        cfg.num_policies = 2
-    else:
-        cfg.num_policies = 1
+    # if cfg.max_pure_expl_steps > 0:
+    #     cfg.num_policies = 2
+    # else:
+    #     cfg.num_policies = 1
         
-    #Trying out always having two
+    #Trying out always having two for consistency
     cfg.num_policies = 2
  
 

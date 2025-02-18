@@ -15,12 +15,13 @@ def make_runner(cfg: Config) -> Tuple[Config, Runner]:
         # unless they're explicitly specified in the command line
         cfg = maybe_load_from_checkpoint(cfg)
 
-    if cfg.max_pure_expl_steps > 0:
-        runner_cls = ExploreGoParallelRunner
-    elif cfg.serial_mode:
-        runner_cls = SerialRunner
-    else:
-        runner_cls = ParallelRunner
+    # if cfg.max_pure_expl_steps > 0:
+    #     runner_cls = ExploreGoParallelRunner
+    runner_cls = ExploreGoParallelRunner
+    # elif cfg.serial_mode:
+    #     runner_cls = SerialRunner
+    # else:
+    #     runner_cls = ParallelRunner
 
     runner = runner_cls(cfg)
 
