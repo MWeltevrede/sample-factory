@@ -12,10 +12,8 @@ from tensorboardX import SummaryWriter
 
 import time
 from collections import deque
-from typing import Dict, Optional, Tuple
 
 import torch
-from torch import Tensor
 import numpy as np
 import argparse
 import functools
@@ -54,6 +52,7 @@ def evaluate_full_contexts(runner: Runner) -> None:
         if policy_id != 0:
             break
         writer = runner.writers[policy_id]
+        old_policy_idx = cfg.policy_index
         cfg.policy_index = policy_id
         cfg = load_from_checkpoint(cfg)
         cfg.max_num_frames = 1000000
@@ -203,6 +202,7 @@ def evaluate_full_contexts(runner: Runner) -> None:
                     writer.add_scalar("eval/total_steps", env_steps, total_steps)
                     break
 
+        cfg.policy_index = old_policy_idx
         env.close()
     
     
