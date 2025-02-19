@@ -224,7 +224,7 @@ class ActorState:
             self.last_episode_reward = self.last_episode_duration = 0.0
 
         # switch from pure exploration phase to normal policy
-        if info['step_count'][0] == info['step_count'][1] and self.cfg.max_pure_expl_steps >= 0:
+        if self.curr_policy_id > 0 and info['step_count'][0] >= info['step_count'][1] and self.cfg.max_pure_expl_steps >= 0:
             # switch from pure exploration phase to normal policy
             self.curr_traj_buffer["dones"][rollout_step] = True
             self.curr_traj_buffer["time_outs"][rollout_step] = True
