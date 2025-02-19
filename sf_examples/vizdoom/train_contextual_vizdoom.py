@@ -50,7 +50,7 @@ def evaluate_full_contexts(runner: Runner) -> None:
     #env_steps = cfg.evaluation_env_steps
     for policy_id in range(cfg.num_policies):
         if policy_id != 0:
-            break
+            continue
         writer = runner.writers[policy_id]
         cfg = load_from_checkpoint(cfg)
         cfg.max_num_frames = 1000000
