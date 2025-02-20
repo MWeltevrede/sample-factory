@@ -210,7 +210,7 @@ class VizdoomContextualEvaluation(AlgoObserver):
     # def on_training_step(self, runner: Runner, training_iteration_since_resume: int) -> None:
     def on_training_step(self, runner: Runner, training_iteration_since_resume:int) -> None:
         """Called after each training step."""
-        if runner.env_steps[0] - self.last_eval_steps > 100000:
+        if runner.env_steps[0] - self.last_eval_steps > 5000000:
             self.last_eval_steps = runner.env_steps[0]
             evaluate_full_contexts(runner=runner)
         return super().on_training_step(runner=runner, training_iteration_since_resume=training_iteration_since_resume)
