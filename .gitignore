@@ -11,7 +11,7 @@ __pycache__/
 
 #slurm outputs
 slurm_out/*
-slurm_vizdoom/*
+slurm_scripts/slurm_vizdoom/*
 
 # Distribution / packaging
 .Python
