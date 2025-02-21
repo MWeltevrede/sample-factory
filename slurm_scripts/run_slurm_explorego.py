@@ -10,9 +10,9 @@ from os.path import join
 from subprocess import PIPE, Popen
 
 
-TIME = '00:10:00'
+TIME = '12:00:00'
 CPUS_PER_TASK = '16'
-QOS = 'short'
+QOS = 'medium'
 PARTITION = 'st,insy,general'
 ACCOUNT = 'ewi-insy-sdm'
 

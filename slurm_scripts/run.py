@@ -26,6 +26,10 @@ def launcher_argparser(args) -> argparse.ArgumentParser:
     parser.add_argument(
         "--experiment_suffix", default="", type=str, help="Append this to the name of the experiment dir"
     )
+    parser.add_argument("--num_gpus", default=1)
+    parser.add_argument("--max_parallel", default=1)
+    parser.add_argument("--experiments_per_gpu", default=1) 
+
 
     partial_cfg, _ = parser.parse_known_args(args)
     if partial_cfg.backend == "slurm_explorego":
