@@ -12,6 +12,7 @@ from tensorboardX import SummaryWriter
 
 import time
 from collections import deque
+from gymnasium.spaces import Discrete
 
 import torch
 import numpy as np
@@ -65,7 +66,7 @@ def evaluate_full_contexts(runner: Runner) -> None:
         #log.debug(f"Using frameskip {cfg.env_frameskip} and {render_action_repeat=} for evaluation")
 
         cfg.num_envs = 1
-        cfg.env = cfg.env+'_test'
+        cfg.env = cfg.env[:-5]+'test'
 
         render_mode = "human"
 
@@ -235,13 +236,13 @@ def register_msg_handlers(cfg: Config, runner: Runner):
 def register_custom_doom_env(name='doom_battle', num_contexts=-1,  max_pure_expl_steps=0, test=False):
     # absolute path needs to be specified, otherwise Doom will look in the SampleFactory scenarios folder
     #base_env_spec = doom_env_by_name(base_name)
-    scenario_absolute_path = join(os.path.dirname(__file__), "doom", "scenarios", f"{name}.cfg")
     if test:
-        name += '_test'
+        name = name[:-5] + 'test'
+    scenario_absolute_path = join(os.path.dirname(__file__), "doom", "scenarios", f"{name}.cfg")
     spec = DoomSpec(
         name,
         scenario_absolute_path,  # use your custom cfg here
-        doom_action_space_extended(),
+        Discrete(1 + 4),
         extra_wrappers=[(ExploreGoWrapper, {'max_pure_expl_steps': max_pure_expl_steps}), (ContextualWrapper, {'num_contexts': num_contexts})],
     )
 
