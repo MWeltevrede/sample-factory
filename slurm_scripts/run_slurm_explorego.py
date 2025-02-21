@@ -10,16 +10,15 @@ from os.path import join
 from subprocess import PIPE, Popen
 
 
-TIME = '20:00:00'
+TIME = '00:10:00'
 CPUS_PER_TASK = '16'
-PARTITION = 'insy,general'
+QOS = 'short'
+PARTITION = 'st,insy,general'
 ACCOUNT = 'ewi-insy-sdm'
 
 SBATCH_TEMPLATE_DEFAULT = (
     "#!/bin/bash\n"
-    "module load 2023r1\n"
     "module load cuda/12.1\n"
-    "export APPTAINER_CACHE_DIR=\"/scratch/chhhorsch/max-proj/explorego/.cache\"\n"
     "previous=$(/usr/bin/nvidia-smi --query-accounted-apps=\'gpu_utilization,mem_utilization,max_memory_usage,time\' --format=\'csv\' | /usr/bin/tail -n \'+2\')\n"
 )
 
@@ -107,8 +106,9 @@ def run_slurm(run_description, args):
     for sbatch_file in sbatch_files:
         idx += 1
         sbatch_fname = os.path.basename(sbatch_file)
-        cmd = f'sbatch --job-name=vizdoom --time={TIME} --ntasks=1 --gpus-per-task=1 --cpus-per-task={CPUS_PER_TASK} --partition={PARTITION} --mem-per-cpu=6GB --account={ACCOUNT} --output={workdir}/{sbatch_fname}-slurm.out --error={workdir}/{sbatch_fname}-slurm.err {sbatch_file}'
-        print("Executing %s...", cmd)
+        print(sbatch_fname)
+        cmd = f'sbatch --job-name=vizdoom --time={TIME} --qos={QOS} --ntasks=1 --gpus-per-task=1 --cpus-per-task={CPUS_PER_TASK} --partition={PARTITION} --mem-per-cpu=6GB --account={ACCOUNT} --output={workdir}/{sbatch_fname}-slurm.out --error={workdir}/{sbatch_fname}-slurm.err slurm_vizdoom/{sbatch_fname}'
+        print(f"Executing {cmd}")
 
         if args.slurm_print_only:
             output = idx
@@ -117,26 +117,28 @@ def run_slurm(run_description, args):
             process = Popen(cmd_tokens, stdout=PIPE)
             output, err = process.communicate()
             exit_code = process.wait()
-            print("Output: %s, err: %s, exit code: %r", output, err, exit_code)
+            print(f"Output: {output}, err: {err}, exit code: {exit_code}")
 
             if exit_code != 0:
                 print("sbatch process failed!")
                 time.sleep(5)
 
-        #job_id = str(output[20:])
-        job_id = str(output)
+        if args.slurm_print_only:
+            job_id = str(output)
+        else:
+            job_id = str(output[20:])
         job_ids.append(job_id)
 
         time.sleep(pause_between)
 
     tail_cmd = f"tail -f {workdir}/*.out"
-    print("Monitor log files using\n\n\t %s \n\n", tail_cmd)
+    print(f"Monitor log files using\n\n\t {tail_cmd} \n\n")
 
     scancel_cmd = f'scancel {" ".join(job_ids)}'
 
-    print("Jobs queued: %r", job_ids)
+    print(f"Jobs queued: {job_ids}")
 
-    print("Use this command to cancel your jobs: \n\t %s \n", scancel_cmd)
+    print(f"Use this command to cancel your jobs: \n\t {scancel_cmd} \n")
 
     with open(join(workdir, "scancel.sh"), "w") as fobj:
         fobj.write(scancel_cmd)

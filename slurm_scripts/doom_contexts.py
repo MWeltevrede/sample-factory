@@ -1,11 +1,20 @@
 from run_description import Experiment, ParamGrid, RunDescription
 
+# _params = ParamGrid(
+#     [
+#         ("env", ["health_gathering_supreme", "battle"]),
+#         ("seed", range(5,10)),
+#         ("num_contexts", [5]),
+#         ("max_pure_expl_steps", [0, 200])
+#     ]
+# )
+
 _params = ParamGrid(
     [
-        ("env", ["health_gathering_supreme", "battle"]),
-        ("seed", range(5,10)),
+        ("env", ["health_gathering_supreme"]),
+        ("seed", [5]),
         ("num_contexts", [5]),
-        ("max_pure_expl_steps", [0, 200])
+        ("max_pure_expl_steps", [0])
     ]
 )
 

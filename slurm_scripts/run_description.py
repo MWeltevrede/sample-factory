@@ -3,8 +3,6 @@ import re
 from collections import OrderedDict
 from os.path import join
 
-import numpy as np
-
 
 class ParamGenerator:
     def __init__(self):
@@ -23,10 +21,7 @@ class ParamList(ParamGenerator):
         self.combinations = combinations
 
     def generate_params(self, randomize=True):
-        if randomize:
-            combinations = np.random.permutation(self.combinations)
-        else:
-            combinations = self.combinations
+        combinations = self.combinations
 
         for combination in combinations:
             yield combination
@@ -62,15 +57,16 @@ class ParamGrid(ParamGenerator):
             return dict()
 
         # start with 0th value for every parameter
-        total_num_combinations = np.prod([len(p_values) for p_values in self.grid.values()])
+        total_num_combinations = 1
+        for a in [len(p_values) for p_values in self.grid.values()]:
+            total_num_combinations *= a
+            
+        
 
         param_names = tuple(self.grid.keys())
         all_combinations = self._generate_combinations(0, param_names)
 
         assert len(all_combinations) == total_num_combinations
-
-        if randomize:
-            all_combinations = np.random.permutation(all_combinations)
 
         for combination in all_combinations:
             combination_dict = dict()
