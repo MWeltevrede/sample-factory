@@ -234,8 +234,15 @@ def register_msg_handlers(cfg: Config, runner: Runner):
         
 def register_custom_doom_env(name='doom_battle', num_contexts=-1,  max_pure_expl_steps=0, test=False):
     # absolute path needs to be specified, otherwise Doom will look in the SampleFactory scenarios folder
-    #base_env_spec = doom_env_by_name(base_name)
-    scenario_absolute_path = join(os.path.dirname(__file__), "doom", "scenarios", f"{name}.cfg")
+
+    config_name = name
+    if name in ['my_way_home_1', 'my_way_home_2']:
+        if test:
+            config_name += '_test'
+        else:
+            config_name += '_train'
+    scenario_absolute_path = join(os.path.dirname(__file__),
+                                   "doom", "scenarios", f"{config_name}.cfg")
     if test:
         name += '_test'
     spec = DoomSpec(
