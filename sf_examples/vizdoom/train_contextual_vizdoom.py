@@ -198,7 +198,7 @@ def evaluate_full_contexts(runner: Runner) -> None:
                     total_steps = np.array([runner.env_steps[i] for i in runner.env_steps]).sum()
                     writer.add_scalar("eval/episode_rewards", float(np.mean(ep_rews)), env_steps)
                     writer.add_scalar("eval/true_objectives", float(np.mean(ep_true_objs)), env_steps)
-                    writer.add_scalar("eval/total_steps", env_steps, total_steps)
+                    writer.add_scalar("eval/total_steps", total_steps, env_steps)
                     break
 
         env.close()
