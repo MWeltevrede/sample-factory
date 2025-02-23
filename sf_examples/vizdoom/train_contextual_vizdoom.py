@@ -260,8 +260,6 @@ def register_custom_doom_env(name='doom_battle', num_contexts=-1,  max_pure_expl
 
 import time
 def main():
-    print("CALLED TRAIN!!", flush=True)
-    log.info("CALLED TRAIN!!", flush=True)
     """Script entry point."""
     register_vizdoom_components()
 
