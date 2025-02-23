@@ -197,7 +197,7 @@ def evaluate_full_contexts(runner: Runner) -> None:
                     total_steps = np.array([runner.env_steps[i] for i in runner.env_steps]).sum()
                     writer.add_scalar("eval/episode_rewards", float(np.mean(ep_rews)), env_steps)
                     writer.add_scalar("eval/true_objectives", float(np.mean(ep_true_objs)), env_steps)
-                    writer.add_scalar("eval/total_steps", env_steps, total_steps)
+                    writer.add_scalar("eval/total_steps", total_steps, env_steps)
                     break
 
         env.close()
@@ -241,6 +241,7 @@ def register_custom_doom_env(name='doom_battle', num_contexts=-1,  max_pure_expl
             config_name += '_test'
         else:
             config_name += '_train'
+    log.info("CONFIG NAME: ", config_name)
     scenario_absolute_path = join(os.path.dirname(__file__),
                                    "doom", "scenarios", f"{config_name}.cfg")
     if test:
@@ -259,6 +260,8 @@ def register_custom_doom_env(name='doom_battle', num_contexts=-1,  max_pure_expl
 
 import time
 def main():
+    print("CALLED TRAIN!!", flush=True)
+    log.info("CALLED TRAIN!!", flush=True)
     """Script entry point."""
     register_vizdoom_components()
 

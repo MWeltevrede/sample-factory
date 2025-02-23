@@ -10,14 +10,15 @@ from os.path import join
 from subprocess import PIPE, Popen
 
 
-TIME = '12:00:00'
+TIME = '4:00:00'
 CPUS_PER_TASK = '16'
-QOS = 'medium'
-PARTITION = 'st,insy,general'
+QOS = 'short'
+PARTITION = 'insy,general'
 ACCOUNT = 'ewi-insy-sdm'
 
 SBATCH_TEMPLATE_DEFAULT = (
     "#!/bin/bash\n"
+    "module use /opt/insy/modulefiles\n"
     "module load cuda/12.1\n"
     "previous=$(/usr/bin/nvidia-smi --query-accounted-apps=\'gpu_utilization,mem_utilization,max_memory_usage,time\' --format=\'csv\' | /usr/bin/tail -n \'+2\')\n"
 )
@@ -89,7 +90,7 @@ def run_slurm(run_description, args):
     sbatch_files = []
     for experiment in experiments:
         cmd, name, *_ = experiment
-        cmd = "\napptainer exec --nv vizdoom.sif /bin/bash -c \""+cmd+"\""
+        cmd = "\napptainer exec -B \"/tudelft.net/staff-umbrella/Caroline PhD Research/\" --nv vizdoom.sif /bin/bash -c \""+cmd+"\""
 
         sbatch_fname = f"sbatch_{name}.sh"
         sbatch_fname = join(workdir, sbatch_fname)
