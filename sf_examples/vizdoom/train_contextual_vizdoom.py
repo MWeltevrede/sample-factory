@@ -241,7 +241,6 @@ def register_custom_doom_env(name='doom_battle', num_contexts=-1,  max_pure_expl
             config_name += '_test'
         else:
             config_name += '_train'
-    log.info("CONFIG NAME: ", config_name)
     scenario_absolute_path = join(os.path.dirname(__file__),
                                    "doom", "scenarios", f"{config_name}.cfg")
     if test:
