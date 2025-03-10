@@ -7,11 +7,11 @@ from sample_factory.train import run_rl
 from sf_examples.envpool.procgen.envpool_procgen_params import add_procgen_env_args, procgen_override_defaults
 from sf_examples.envpool.procgen.envpool_procgen_utils import ENVPOOL_PROCGEN_ENVS, make_procgen_env
 
+def non_batched_make_procgen_env(env_name, cfg, env_config, render_mode: Optional[str] = None):
+    return make_procgen_env(env_name, cfg, env_config, render_mode, non_batched=True)
 
 def register_procgen_envs():
     for env in ENVPOOL_PROCGEN_ENVS:
-        def non_batched_make_procgen_env(env_name, cfg, env_config, render_mode: Optional[str] = None):
-            return make_procgen_env(env_name, cfg, env_config, render_mode, non_batched=True)
         register_env(env.name, non_batched_make_procgen_env)
 
 
