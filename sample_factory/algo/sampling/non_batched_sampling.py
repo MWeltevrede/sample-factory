@@ -57,7 +57,7 @@ class ActorState:
 
         self.policy_mgr = policy_mgr
         # self.curr_policy_id = self.policy_mgr.get_policy_for_agent(agent_idx, env_idx, global_env_idx)
-        if cfg.max_pure_expl_steps >= 0:
+        if "max_pure_expl_steps" in cfg:
             self.curr_policy_id = 1
         else:
             self.curr_policy_id = self.policy_mgr.get_policy_for_agent(agent_idx, env_idx, global_env_idx)
@@ -214,7 +214,7 @@ class ActorState:
             self._update_training_info()
 
             # new_policy_id = self.policy_mgr.get_policy_for_agent(self.agent_idx, self.env_idx, self.global_env_idx)
-            if self.cfg.max_pure_expl_steps >= 0:
+            if "max_pure_expl_steps" in self.cfg:
                 new_policy_id = 1
             else:
                 new_policy_id = self.policy_mgr.get_policy_for_agent(self.agent_idx, self.env_idx, self.global_env_idx)
@@ -224,7 +224,7 @@ class ActorState:
             self.last_episode_reward = self.last_episode_duration = 0.0
 
         # switch from pure exploration phase to normal policy
-        if int(self.curr_policy_id) > 0 and info['step_count'][0] >= info['step_count'][1] and self.cfg.max_pure_expl_steps >= 0:
+        if "max_pure_expl_steps" in self.cfg and int(self.curr_policy_id) > 0 and info['step_count'][0] >= info['step_count'][1]:
             # switch from pure exploration phase to normal policy
             self.curr_traj_buffer["dones"][rollout_step] = True
             self.curr_traj_buffer["time_outs"][rollout_step] = True
