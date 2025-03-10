@@ -41,6 +41,44 @@ class EnvPoolResetFixWrapper(gym.Wrapper):
         kwargs.pop("seed", None)  # envpool does not support the seed in reset, even with the updated API
         kwargs.pop("options", None)
         return self.env.reset(**kwargs)
+    
+class EnvPoolNonBatchedWrapper(gym.Wrapper):
+    """
+        This wrapper is necessary when running Explore-Go. 
+        It runs envpool in non-batched (or non-vectorised) mode, which is less efficient but necessary for some algorithms.
+    """
+    def __init__(self, env):
+        super().__init__(env)
+
+    def step(self, actions):
+        actions = np.array([actions], dtype=self.env.spec.action_array_spec['action'].dtype)
+        env_ids = np.array([0], dtype=self.env.spec.action_array_spec['env_id'].dtype)
+
+        obs, reward, terminated, truncated, info = self.env.step(actions, env_ids)
+
+        obs = obs[0]
+        reward = reward[0]
+        terminated = terminated[0]
+        truncated = truncated[0]
+        for k,v in info.items():
+            if isinstance(v, dict):
+                for k2,v2 in v.items():
+                    v[k2] = v2[0]
+            else:
+                info[k] = v[0]
+
+        return obs, reward, terminated, truncated, info
+
+    def reset(self, **kwargs):
+        obs, info = self.env.reset(**kwargs)
+        obs = obs[0]
+        for k,v in info.items():
+            if isinstance(v, dict):
+                for k2,v2 in v.items():
+                    v[k2] = v2[0]
+            else:
+                info[k] = v[0]
+        return obs, info
 
 
 class BatchedRecordEpisodeStatistics(gym.Wrapper):
