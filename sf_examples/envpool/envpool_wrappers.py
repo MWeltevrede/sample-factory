@@ -29,8 +29,8 @@ class EnvPoolResetFixWrapper(gym.Wrapper):
     def __init__(self, env):
         super().__init__(env)
 
-    def step(self, actions):
-        obs, reward, terminated, truncated, info = self.env.step(actions)
+    def step(self, actions, *args):
+        obs, reward, terminated, truncated, info = self.env.step(actions, *args)
 
         needs_reset = np.nonzero(terminated | truncated)[0]
         obs[needs_reset], _ = self.env.reset(needs_reset)
@@ -49,10 +49,15 @@ class EnvPoolNonBatchedWrapper(gym.Wrapper):
     """
     def __init__(self, env):
         super().__init__(env)
+        unwrapped_env = env
+        while hasattr(unwrapped_env, "env"):
+            unwrapped_env = unwrapped_env.env
+        self.action_dtype = unwrapped_env.spec.action_array_spec['action'].dtype
+        self.env_id_dtype = unwrapped_env.spec.action_array_spec['env_id'].dtype
 
     def step(self, actions):
-        actions = np.array([actions], dtype=self.env.spec.action_array_spec['action'].dtype)
-        env_ids = np.array([0], dtype=self.env.spec.action_array_spec['env_id'].dtype)
+        actions = np.array([actions], dtype=self.action_dtype)
+        env_ids = np.array([0], dtype=self.env_id_dtype)
 
         obs, reward, terminated, truncated, info = self.env.step(actions, env_ids)
 
@@ -97,9 +102,9 @@ class BatchedRecordEpisodeStatistics(gym.Wrapper):
         self.returned_episode_lengths = np.zeros(self.num_envs, dtype=np.int32)
         return observations, infos
 
-    def step(self, action):
-        observations, rewards, terminated, truncated, infos = super().step(action)
-        self.episode_returns += infos["reward"]
+    def step(self, action, *args):
+        observations, rewards, terminated, truncated, infos = self.env.step(action, *args)
+        self.episode_returns += rewards
         self.episode_lengths += 1
         self.returned_episode_returns[:] = self.episode_returns
         self.returned_episode_lengths[:] = self.episode_lengths
