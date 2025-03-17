@@ -70,4 +70,5 @@ dependencies:
       - six==1.17.0
       - tensorboardx==2.6.2.2
       - vizdoom==1.2.4
-      - git+https://github.com/chorsch/sample-factory.git
+      - shimmy==1.2.1
+      - sample-factory[envpool]@git+https://github.com/MWeltevrede/sample-factory@env/procgen
