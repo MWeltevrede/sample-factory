@@ -38,6 +38,13 @@ class ActorCritic(nn.Module, Configurable):
             # comment this out for debugging (i.e. to be able to step through normalizer code)
             self.returns_normalizer = torch.jit.script(self.returns_normalizer)
 
+        self.intrinsic_reward_normalizer: Optional[RunningMeanStdInPlace] = None
+        if cfg.normalize_intrinsic_rewards:
+            returns_shape = (1,)  # it's actually a single scalar but we use 1D shape for the normalizer
+            self.intrinsic_reward_normalizer = RunningMeanStdInPlace(returns_shape, norm_only=True)
+            # comment this out for debugging (i.e. to be able to step through normalizer code)
+#            self.intrinsic_reward_normalizer = torch.jit.script(self.intrinsic_reward_normalizer)
+
         self.last_action_distribution = None  # to be populated after each forward step
 
     def get_action_parameterization(self, decoder_output_size: int):

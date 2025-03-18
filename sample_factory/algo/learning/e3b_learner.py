@@ -303,11 +303,11 @@ class Learner(Configurable):
         if 'e3b' in self.cfg.intrinsic_reward_episodic or 'e3b' in self.cfg.intrinsic_reward_global:
             # initialize IDM for E3B
 #            from sample_factory.model.encoder import default_make_encoder_func            
-            # from sf_examples.minihack.train_minihack import make_custom_encoder # TODO: don't hardcode Minihack encoder
-            from sf_examples.vizdoom.doom.doom_model import make_vizdoom_encoder
+            from sf_examples.minihack.train_minihack import make_custom_encoder # TODO: don't hardcode Minihack encoder
+            # from sf_examples.vizdoom.doom.doom_model import make_vizdoom_encoder
             from sample_factory.model.inverse_dynamics import default_make_idm_func
 #            self.feature_encoder = default_make_encoder_func(self.cfg, self.env_info.obs_space)
-            self.feature_encoder = make_vizdoom_encoder(self.cfg, self.env_info.obs_space)
+            self.feature_encoder = make_custom_encoder(self.cfg, self.env_info.obs_space)
             self.inverse_dynamics_model = default_make_idm_func(self.env_info.action_space, self.feature_encoder.get_out_size())
 
             log.debug("Created feature encoder model with architecture:")
@@ -1098,17 +1098,17 @@ class Learner(Configurable):
         env_id = buff['env_id'].long()            
         
         if bonus_type == 'e3b':
-            # encoder_input = {'glyphs': buff['normalized_obs']['glyphs'][:, :-1],
-            #                  'blstats': buff['normalized_obs']['blstats'][:, :-1],
-            #                  'message': buff['normalized_obs']['message'][:, :-1]}
-            encoder_input = buff['normalized_obs'][:,:-1]
-            dataset_size = B*T
-            for d, k, v in iterate_recursively(encoder_input):
-                if k not in ['env_id', 'start_step']:
-                    # collapse first two dimensions (batch and time) into a single dimension
-                    d[k] = v.reshape((dataset_size,) + tuple(v.shape[2:]))  
+            encoder_input = {'glyphs': buff['normalized_obs']['glyphs'][:, :-1],
+                             'blstats': buff['normalized_obs']['blstats'][:, :-1],
+                             'message': buff['normalized_obs']['message'][:, :-1]}
+            # encoder_input = buff['normalized_obs'][:,:-1]
+            # dataset_size = B*T
+            # for d, k, v in iterate_recursively(encoder_input):
+                # if k not in ['env_id', 'start_step']:
+                #     # collapse first two dimensions (batch and time) into a single dimension
+                #     d[k] = v.reshape((dataset_size,) + tuple(v.shape[2:]))  
 
-            phi = self.feature_encoder(encoder_input)
+            phi = self.feature_encoder(encoder_input, flatten=True)
             phi = phi.view(B, T, -1)
             dones = buff['dones'].view(B, T)
             env_id = buff['env_id'].long()
@@ -1203,8 +1203,11 @@ class Learner(Configurable):
                     self.actor_critic.intrinsic_reward_normalizer(intrinsic_rewards)  # in-place
                 self.loss_summaries['normalized_intrinsic_rewards'] = intrinsic_rewards.mean().item()
                 intrinsic_rewards = intrinsic_rewards.view(B, T)
-                # buff['rewards'] = buff['rewards'] + self.cfg.intrinsic_reward_coeff * intrinsic_rewards
-                buff['rewards'] = self.cfg.intrinsic_reward_coeff * intrinsic_rewards
+
+                if self.cfg.pure_exploration:
+                    buff['rewards'] = self.cfg.intrinsic_reward_coeff * intrinsic_rewards
+                else:
+                    buff['rewards'] = buff['rewards'] + self.cfg.intrinsic_reward_coeff * intrinsic_rewards
                     
                     
             

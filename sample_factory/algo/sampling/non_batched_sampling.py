@@ -456,8 +456,10 @@ class NonBatchedVectorEnvRunner(VectorEnvRunner):
             seed = self.actor_states[env_i][0].global_env_idx
             observations, info = e.reset(seed=seed)  # new way of doing seeding since Gym 0.26.0
             for i, o in enumerate(observations):
-                o['step_count'] = info[i]['step_count']
-
+                if isinstance(o, Tuple):
+                    o[0]['step_count'] = info[i]['step_count']
+                else:
+                    o['step_count'] = info[i]['step_count']
             if self.cfg.decorrelate_envs_on_one_worker:
                 env_i_split = self.num_envs * self.split_idx + env_i
                 decorrelate_steps = self.cfg.rollout * env_i_split
@@ -467,7 +469,10 @@ class NonBatchedVectorEnvRunner(VectorEnvRunner):
                     actions = [e.action_space.sample(obs.get("action_mask")) for obs in observations]
                     observations, rew, terminated, truncated, info = e.step(actions)
                     for i, o in enumerate(observations):
-                        o['step_count'] = info[i]['step_count']
+                        if isinstance(o, Tuple):
+                            o[0]['step_count'] = info[i]['step_count']
+                        else:
+                            o['step_count'] = info[i]['step_count']
 
             for agent_i, obs in enumerate(observations):
                 actor_state = self.actor_states[env_i][agent_i]
@@ -664,7 +669,10 @@ class NonBatchedVectorEnvRunner(VectorEnvRunner):
                 actions = [s.curr_actions() for s in self.actor_states[env_i]]
                 new_obs, rewards, terminated, truncated, infos = e.step(actions)
                 for i, o in enumerate(new_obs):
-                    o['step_count'] = infos[i]['step_count']
+                    if isinstance(o, Tuple):
+                        o[0]['step_count'] = infos[i]['step_count']
+                    else:
+                        o['step_count'] = infos[i]['step_count']
 
             with timing.add_time("overhead"):
                 stats = self._process_env_step(new_obs, rewards, terminated, truncated, infos, env_i)
