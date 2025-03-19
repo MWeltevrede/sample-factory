@@ -19,6 +19,8 @@ import torch
 import torch.nn.functional as F
 import math
 from sample_factory.utils.utils import str2bool
+from collections import deque
+import time
 
 import nle
 from nle import nethack
@@ -37,8 +39,6 @@ from sample_factory.train import run_rl
 from sample_factory.utils.typing import Config, ObsSpace
 
 from sf_examples.vizdoom.doom.wrappers.explore_go import ExploreGoWrapper
-
-
 
 def calc_conv_output_size(H, W, P, D, K, S, n_layers=2):
     for l in range(n_layers):
@@ -121,18 +121,21 @@ class MiniHackEnv(gym.Env, TrainingInfoInterface, RewardShapingInterface):
         self.cfg = cfg
         self.curr_episode_steps = 0
 
-        self.gym_env = gym.make(full_env_name, observation_keys=('glyphs', 'blstats', 'message'))
+        self.render_mode = render_mode
+        obs_keys = ('glyphs', 'blstats', 'message')
+        if render_mode == 'rgb_array':
+            obs_keys = ('pixel', *obs_keys)
+        self.gym_env = gym.make(full_env_name, observation_keys=obs_keys)
 
         self.observation_space = self.gym_env.observation_space
         self.action_space = self.gym_env.action_space
 
 
-        self.render_mode = render_mode
-
-
     def reset(self, **kwargs):
         self.curr_episode_steps = 0
         obs = self.gym_env.reset()
+        obs = obs[0]
+        self.img = obs.pop('pixel', None)
         return obs, {}
 
     def step(self, action):
@@ -141,6 +144,7 @@ class MiniHackEnv(gym.Env, TrainingInfoInterface, RewardShapingInterface):
         assert isinstance(action, (int, np.int32, np.int64))
 
         obs, reward, terminated, truncated, info = self.gym_env.step(action)
+        self.img = obs.pop('pixel', None)
 
         truncated = self.curr_episode_steps >= self.cfg.custom_env_episode_len
 
@@ -149,7 +153,7 @@ class MiniHackEnv(gym.Env, TrainingInfoInterface, RewardShapingInterface):
         return obs, reward, terminated, truncated, dict()
 
     def render(self):
-        pass
+        return self.img
 
 
     def get_default_reward_shaping(self) -> Dict[str, Any]:
