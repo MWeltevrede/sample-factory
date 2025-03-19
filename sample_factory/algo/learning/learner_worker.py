@@ -70,7 +70,7 @@ class LearnerWorker(HeartbeatStoppableEventLoopObject, Configurable):
         self.param_server = ParameterServer(policy_id, policy_versions_tensor, cfg.serial_mode)
 
         if "max_pure_expl_steps" in self.cfg and policy_id == 1:
-            cfg.pure_exploration = True
+            # cfg.pure_exploration = True
             self.learner: Learner = E3BLearner(cfg, env_info, policy_versions_tensor, policy_id, self.param_server)
         else:
             self.learner: Learner = E3BLearner(cfg, env_info, policy_versions_tensor, policy_id, self.param_server)
