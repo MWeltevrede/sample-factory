@@ -1204,10 +1204,7 @@ class Learner(Configurable):
                 self.loss_summaries['normalized_intrinsic_rewards'] = intrinsic_rewards.mean().item()
                 intrinsic_rewards = intrinsic_rewards.view(B, T)
 
-                if self.cfg.pure_exploration:
-                    buff['rewards'] = self.cfg.intrinsic_reward_coeff * intrinsic_rewards
-                else:
-                    buff['rewards'] = buff['rewards'] + self.cfg.intrinsic_reward_coeff * intrinsic_rewards
+                buff['rewards'] = buff['rewards'] + self.cfg.intrinsic_reward_coeff * intrinsic_rewards
                     
                     
             
@@ -1321,3 +1318,138 @@ class Learner(Configurable):
                 stats[STATS_KEY] = memory_stats("learner", self.device)
 
             return stats
+        
+
+class PureLearner(Learner):
+    def _prepare_batch(self, batch: TensorDict) -> Tuple[TensorDict, int, int]:
+
+        with torch.no_grad():
+            # create a shallow copy so we can modify the dictionary
+            # we still reference the same buffers though
+            buff = shallow_recursive_copy(batch)
+
+            # ignore experience from other agents (i.e. on episode boundary) and from inactive agents
+            valids: Tensor = buff["policy_id"] == self.policy_id
+            # ignore experience that was older than the threshold even before training started
+            curr_policy_version: int = self.train_step
+            buff["valids"][:, :-1] = valids & (curr_policy_version - buff["policy_version"] < self.cfg.max_policy_lag)
+            # for last T+1 step, we want to use the validity of the previous step
+            buff["valids"][:, -1] = buff["valids"][:, -2]
+
+            # ensure we're in train mode so that normalization statistics are updated
+            if not self.actor_critic.training:
+                self.actor_critic.train()
+
+            buff["normalized_obs"] = self._prepare_and_normalize_obs(buff["obs"])
+            del buff["obs"]  # don't need non-normalized obs anymore
+
+
+        with torch.no_grad():
+            # calculate intrinsic rewards if needed
+
+            B, T = buff['actions'].shape[:2]
+
+            # single reward type
+            if self.cfg.intrinsic_reward_episodic != 'none':
+                intrinsic_rewards_episodic = self._compute_intrinsic_rewards(buff, self.cfg.intrinsic_reward_episodic)
+                self.loss_summaries['unnormalized_intrinsic_rewards_episodic'] = intrinsic_rewards_episodic.mean().item()
+
+            if self.cfg.intrinsic_reward_global != 'none':
+                intrinsic_rewards_global = self._compute_intrinsic_rewards(buff, self.cfg.intrinsic_reward_global)
+                self.loss_summaries['unnormalized_intrinsic_rewards_global'] = intrinsic_rewards_global.mean().item()
+
+            if self.cfg.intrinsic_reward_global != 'none' and self.cfg.intrinsic_reward_episodic != 'none':
+                intrinsic_rewards = intrinsic_rewards_episodic * intrinsic_rewards_global
+            elif self.cfg.intrinsic_reward_global == 'none' and self.cfg.intrinsic_reward_episodic != 'none':
+                intrinsic_rewards = intrinsic_rewards_episodic
+            elif self.cfg.intrinsic_reward_global != 'none' and self.cfg.intrinsic_reward_episodic == 'none':
+                intrinsic_rewards = intrinsic_rewards_global
+            else:
+                intrinsic_rewards = None
+
+            if intrinsic_rewards is not None:
+                intrinsic_rewards = intrinsic_rewards.view(-1)
+                self.loss_summaries['unnormalized_intrinsic_rewards'] = intrinsic_rewards.mean().item()
+                # return normalization parameters are only used on the learner, no need to lock the mutex
+                if self.cfg.normalize_intrinsic_rewards:
+                    self.actor_critic.intrinsic_reward_normalizer(intrinsic_rewards)  # in-place
+                self.loss_summaries['normalized_intrinsic_rewards'] = intrinsic_rewards.mean().item()
+                intrinsic_rewards = intrinsic_rewards.view(B, T)
+
+                buff['rewards'] = self.cfg.intrinsic_reward_coeff * intrinsic_rewards
+
+        with torch.no_grad():
+            # calculate estimated value for the next step (T+1)
+            normalized_last_obs = buff["normalized_obs"][:, -1]
+            next_values = self.actor_critic(normalized_last_obs, buff["rnn_states"][:, -1], values_only=True)["values"]
+            buff["values"][:, -1] = next_values
+
+            if self.cfg.normalize_returns:
+                # Since our value targets are normalized, the values will also have normalized statistics.
+                # We need to denormalize them before using them for GAE caculation and value bootstrapping.
+                # rl_games PPO uses a similar approach, see:
+                # https://github.com/Denys88/rl_games/blob/7b5f9500ee65ae0832a7d8613b019c333ecd932c/rl_games/algos_torch/models.py#L51
+                denormalized_values = buff["values"].clone()  # need to clone since normalizer is in-place
+                self.actor_critic.returns_normalizer(denormalized_values, denormalize=True)
+            else:
+                # values are not normalized in this case, so we can use them as is
+                denormalized_values = buff["values"]
+
+            if self.cfg.value_bootstrap:
+                # Value bootstrapping is a technique that reduces the surprise for the critic in case
+                # we're ending the episode by timeout. Intuitively, in this case the cumulative return for the last step
+                # should not be zero, but rather what the critic expects. This improves learning in many envs
+                # because otherwise the critic cannot predict the abrupt change in rewards in a timed-out episode.
+                # What we really want here is v(t+1) which we don't have because we don't have obs(t+1) (since
+                # the episode ended). Using v(t) is an approximation that requires that rew(t) can be generally ignored.
+
+                # Multiply by both time_out and done flags to make sure we count only timeouts in terminal states.
+                # There was a bug in older versions of isaacgym where timeouts were reported for non-terminal states.
+                buff["rewards"].add_(self.cfg.gamma * denormalized_values[:, :-1] * buff["time_outs"] * buff["dones"])
+
+            if not self.cfg.with_vtrace:
+                # calculate advantage estimate (in case of V-trace it is done separately for each minibatch)
+                buff["advantages"] = gae_advantages(
+                    buff["rewards"],
+                    buff["dones"],
+                    denormalized_values,
+                    buff["valids"],
+                    self.cfg.gamma,
+                    self.cfg.gae_lambda,
+                )
+                # here returns are not normalized yet, so we should use denormalized values
+                buff["returns"] = buff["advantages"] + buff["valids"][:, :-1] * denormalized_values[:, :-1]
+
+            # remove next step obs, rnn_states, and values from the batch, we don't need them anymore
+            for key in ["normalized_obs", "rnn_states", "values", "valids"]:
+                buff[key] = buff[key][:, :-1]
+
+            dataset_size = buff["actions"].shape[0] * buff["actions"].shape[1]
+            for d, k, v in iterate_recursively(buff):
+                if k not in ['env_id', 'start_step']:
+                    # collapse first two dimensions (batch and time) into a single dimension
+                    d[k] = v.reshape((dataset_size,) + tuple(v.shape[2:]))                    
+
+
+
+            buff["dones_cpu"] = buff["dones"].to("cpu", copy=True, dtype=torch.float, non_blocking=True)
+            buff["rewards_cpu"] = buff["rewards"].to("cpu", copy=True, dtype=torch.float, non_blocking=True)
+
+            # return normalization parameters are only used on the learner, no need to lock the mutex
+            if self.cfg.normalize_returns:
+                self.actor_critic.returns_normalizer(buff["returns"])  # in-place
+
+            num_invalids = dataset_size - buff["valids"].sum().item()
+            if num_invalids > 0:
+                invalid_fraction = num_invalids / dataset_size
+                if invalid_fraction > 0.5:
+                    log.warning(f"{self.policy_id=} batch has {invalid_fraction:.2%} of invalid samples")
+
+                # invalid action values can cause problems when we calculate logprobs
+                # here we set them to 0 just to be safe
+                invalid_indices = (buff["valids"] == 0).nonzero().squeeze()
+                buff["actions"][invalid_indices] = 0
+                # likewise, some invalid values of log_prob_actions can cause NaNs or infs
+                buff["log_prob_actions"][invalid_indices] = -1  # -1 seems like a safe value
+
+            return buff, dataset_size, num_invalids

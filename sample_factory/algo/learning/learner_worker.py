@@ -3,6 +3,7 @@ from __future__ import annotations
 import os
 from threading import Thread
 from typing import Dict, Optional
+import copy
 
 import psutil
 import torch
@@ -12,6 +13,7 @@ from torch import Tensor
 from sample_factory.algo.learning.batcher import Batcher
 from sample_factory.algo.learning.learner import Learner
 from sample_factory.algo.learning.e3b_learner import Learner as E3BLearner
+from sample_factory.algo.learning.e3b_learner import PureLearner as PureE3BLearner
 from sample_factory.algo.utils.context import SampleFactoryContext, set_global_context
 from sample_factory.algo.utils.env_info import EnvInfo
 from sample_factory.algo.utils.heartbeat import HeartbeatStoppableEventLoopObject
@@ -70,8 +72,7 @@ class LearnerWorker(HeartbeatStoppableEventLoopObject, Configurable):
         self.param_server = ParameterServer(policy_id, policy_versions_tensor, cfg.serial_mode)
 
         if "max_pure_expl_steps" in self.cfg and policy_id == 1:
-            # cfg.pure_exploration = True
-            self.learner: Learner = E3BLearner(cfg, env_info, policy_versions_tensor, policy_id, self.param_server)
+            self.learner: Learner = PureE3BLearner(cfg, env_info, policy_versions_tensor, policy_id, self.param_server)
         else:
             self.learner: Learner = E3BLearner(cfg, env_info, policy_versions_tensor, policy_id, self.param_server)
 

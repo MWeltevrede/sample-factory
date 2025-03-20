@@ -372,7 +372,6 @@ def add_extra_params(parser):
     p.add_argument("--encoder_num_layers", default=2, type=int, help="number of layers")
     p.add_argument("--encoder_msg_model", default='lt_cnn_small', type=str, help="message model")
     p.add_argument("--custom_env_episode_len", default=400, type=int, help="episode length")
-    p.add_argument("--pure_exploration", default=False, type=str2bool, help="whether to perform pure exploration")
 
     p.add_argument("--max_pure_expl_steps", default=0, type=int, help="Maximum number of pure exploration steps to take in ExploreGo. A value of 0 means no ExploreGo")
 
@@ -405,7 +404,7 @@ def override_default_params(parser):
         experiment_summaries_interval=10,
         rnn_size=128,
         rnn_type="lstm",
-        train_for_env_steps=5e7,
+        train_for_env_steps=25e6,
         exploration_loss_coeff=0.005,
         num_epochs=1,      
         num_policies=2,  
