@@ -2,6 +2,7 @@ from __future__ import annotations
 
 from typing import Dict, Optional
 
+import math
 import gymnasium as gym
 import torch
 from torch import Tensor, nn
@@ -71,11 +72,14 @@ class ActorCritic(nn.Module, Configurable):
         return self.encoders[0].type_for_input_tensor(input_tensor_name)
 
     def initialize_weights(self, layer):
-        # gain = nn.init.calculate_gain(self.cfg.nonlinearity)
+        # gain = nn.init.calculate_gain('relu')
         gain = self.cfg.policy_init_gain
 
         if hasattr(layer, "bias") and isinstance(layer.bias, torch.nn.parameter.Parameter):
-            layer.bias.data.fill_(0)
+            fan_in, _ = torch.nn.init._calculate_fan_in_and_fan_out(layer.weight)
+            if fan_in != 0:
+                bound = 1 / math.sqrt(fan_in)
+                torch.nn.init.uniform_(layer.bias, -bound, bound)
 
         if self.cfg.policy_initialization == "orthogonal":
             if type(layer) is nn.Conv2d or type(layer) is nn.Linear:
@@ -91,9 +95,29 @@ class ActorCritic(nn.Module, Configurable):
                 nn.init.xavier_uniform_(layer.weight.data, gain=gain)
             else:
                 pass
+        elif self.cfg.policy_initialization == "xavier_normal":
+            if type(layer) is nn.Conv2d or type(layer) is nn.Linear:
+                nn.init.xavier_normal_(layer.weight.data, gain=gain)
+            else:
+                pass
         elif self.cfg.policy_initialization == "torch_default":
             # do nothing
             pass
+        elif self.cfg.policy_initialization == "uniform":
+            if type(layer) is nn.Conv2d or type(layer) is nn.Linear:
+                nn.init.uniform_(layer.weight.data)
+            else:
+                pass
+        elif self.cfg.policy_initialization == "kaiming_uniform":
+            if type(layer) is nn.Conv2d or type(layer) is nn.Linear:
+                nn.init.kaiming_uniform_(layer.weight, a=math.sqrt(5))
+            else:
+                pass
+        elif self.cfg.policy_initialization == "kaiming_normal":
+            if type(layer) is nn.Conv2d or type(layer) is nn.Linear:
+                nn.init.kaiming_normal_(layer.weight, a=math.sqrt(5))
+            else:
+                pass
 
     def normalize_obs(self, obs: Dict[str, Tensor]) -> Dict[str, Tensor]:
         return self.obs_normalizer(obs)
